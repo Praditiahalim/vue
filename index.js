@@ -239,6 +239,34 @@ app.post("/generate", validateApiKey, (req, res) => {
   }
 });
 
+app.get("/check/bin/:number", validateApiKey, async (req, res) => {
+  try {
+    const number = req.params.number;
+
+    // Extract first 6 digits as BIN
+    const bin = number.substring(0, 6);
+
+    // Validate BIN format
+    if (!/^\d{6}/.test(bin)) {
+      return res
+        .status(400)
+        .json({
+          error: "Invalid card number. Must start with 6 digits for BIN.",
+        });
+    }
+
+    const binInfo = await getBinInfo(bin);
+    if (!binInfo) {
+      return res.status(404).json({ error: "BIN information not found" });
+    }
+
+    res.json(binInfo);
+  } catch (error) {
+    console.error("Error checking BIN:", error);
+    res.status(500).json({ error: "Internal server error" });
+  }
+});
+
 app.get("/", (req, res) => {
   res.json({ message: "by pixel" });
 });
