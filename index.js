@@ -8,6 +8,9 @@ const port = process.env.PORT || 3001;
 app.use(cors());
 app.use(express.json());
 
+// Parse URL-encoded bodies
+app.use(express.urlencoded({ extended: true }));
+
 const API_KEY = 'pixelme11@@@';
 
 const validateApiKey = (req, res, next) => {
@@ -72,10 +75,11 @@ app.get('/generate/:bin', validateApiKey, (req, res) => {
         const cardNumber = generateCardNumber(bin);
         const cvv = generateCVV(cardNumber);
         
-        // Generate expiry date (current year + 3 years)
-        const currentDate = new Date();
+        // Random month between 01-12
         const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
-        const year = String(currentDate.getFullYear() + 3);
+        // Random year between current and current + 10
+        const currentYear = new Date().getFullYear();
+        const year = String(currentYear + Math.floor(Math.random() * 10));
 
         res.json({
             number: cardNumber,
@@ -99,10 +103,56 @@ async function getBinInfo(bin) {
     }
 }
 
-app.get('/generate/:bin/:amount', validateApiKey, (req, res) => {
+function getValidExpirationDate(requestedMonth, requestedYear) {
+    const currentDate = new Date();
+    const currentMonth = currentDate.getMonth() + 1; // JavaScript months are 0-based
+    const currentYear = currentDate.getFullYear();
+
+    // If no specific date requested, generate random future date
+    if (!requestedMonth || !requestedYear) {
+        const randomYear = currentYear + Math.floor(Math.random() * 9);
+        const randomMonth = Math.floor(Math.random() * 12) + 1;
+        return {
+            month: String(randomMonth).padStart(2, '0'),
+            year: String(randomYear)
+        };
+    }
+
+    let month = parseInt(requestedMonth);
+    let year = parseInt(requestedYear);
+
+    // Check if requested date is in the past
+    if (year < currentYear || (year === currentYear && month < currentMonth)) {
+        // Adjust to next valid date
+        if (month < currentMonth) {
+            month = currentMonth;
+            year = currentYear;
+        } else {
+            month = currentMonth;
+            year = currentYear + 1;
+        }
+    }
+
+    return {
+        month: String(month).padStart(2, '0'),
+        year: String(year)
+    };
+}
+
+app.post('/generate', validateApiKey, (req, res) => {
     try {
-        const bin = req.params.bin;
-        const amount = parseInt(req.params.amount);
+        const {
+            bin,
+            quantity,
+            includeDate,
+            includeCSV,
+            month,
+            year,
+            csv,
+            format = 'json'
+        } = req.body;
+
+        const amount = parseInt(quantity);
         
         // Validate BIN
         if (!/^\d{4,8}$/.test(bin)) {
@@ -111,47 +161,47 @@ app.get('/generate/:bin/:amount', validateApiKey, (req, res) => {
         
         // Validate amount
         if (isNaN(amount) || amount < 1 || amount > 100) {
+        }
+        if (isNaN(amount) || amount < 1 || amount > 1000) {
             return res.status(400).json({ error: 'Invalid amount. Must be between 1 and 100.' });
         }
 
-        getBinInfo(bin).then(binInfo => {
-            const cards = [];
-            for (let i = 0; i < amount; i++) {
-                const cardNumber = generateCardNumber(bin);
-                const cvv = generateCVV(cardNumber);
-                
-                // Generate expiry date (current year + 3 years)
-                const currentDate = new Date();
-                const month = String(Math.floor(Math.random() * 12) + 1).padStart(2, '0');
-                const year = String(currentDate.getFullYear() + 3);
-
-                const card = {
-                    number: cardNumber,
-                    month: month,
-                    year: year,
-                    cvv: String(cvv)
-                };
-
-                // Add BIN info if available
-                if (binInfo) {
-                    card.bin_details = {
-                        brand: binInfo.brand,
-                        type: binInfo.type,
-                        level: binInfo.level,
-                        bank: binInfo.bank,
-                        country: binInfo.country,
-                        country_name: binInfo.country_name,
-                        country_flag: binInfo.country_flag,
-                        country_currencies: binInfo.country_currencies
-                    };
-                }
-
-                cards.push(card);
+        const cards = [];
+        for (let i = 0; i < amount; i++) {
+            const cardNumber = generateCardNumber(bin);
+            const card = {
+                number: cardNumber
+            };
+            
+            if (includeDate) {
+                const expDate = getValidExpirationDate(month, year);
+                card.month = expDate.month;
+                card.year = expDate.year;
             }
-
-            res.json(cards);
-        });
+            
+            if (includeCSV) {
+                card.cvv = csv || generateCVV(cardNumber);
+            }
+            
+            // Remove undefined properties
+            Object.keys(card).forEach(key => card[key] === undefined && delete card[key]);
+            
+            cards.push(card);
+        }
+        
+        let result;
+        switch (format) {
+            case 'pipe':
+                result = cards.map(c => Object.values(c).join('|')).join('\n');
+                break;
+            case 'json':
+            default:
+                result = cards;
+        }
+        
+        res.json({ success: true, result });
     } catch (error) {
+        console.error('Error:', error);
         res.status(500).json({ error: 'Internal server error' });
     }
 });
