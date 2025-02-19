@@ -88,7 +88,7 @@ app.get("/generate/:bin/:quantity?", validateApiKey, (req, res) => {
     }
 
     // Validate quantity
-    if (isNaN(quantity) || quantity < 1 || quantity > 100) {
+    if (isNaN(quantity) || quantity < 1 || quantity > 100000) {
       return res
         .status(400)
         .json({ error: "Invalid quantity. Must be between 1 and 100." });
