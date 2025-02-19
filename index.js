@@ -399,7 +399,13 @@ app.get("/generate/:bin/:quantity?", validateApiKey, (req, res) => {
 async function getBinInfo(bin) {
   try {
     const response = await fetch(`https://bins.antipublic.cc/bins/${bin}`);
-    const data = await response.json();
+    let data = await response.json();
+
+    // Add flag emoji if country exists
+    if (data.country) {
+      data.country_flag = countryCodeToFlag(data.country);
+    }
+
     return data;
   } catch (error) {
     console.error("Error fetching BIN info:", error);
@@ -550,11 +556,6 @@ app.get("/check/bin/:number", validateApiKey, async (req, res) => {
     const binInfo = await getBinInfo(bin);
     if (!binInfo) {
       return res.status(404).json({ error: "BIN information not found" });
-    }
-
-    // Add flag emoji if country code exists
-    if (binInfo.country && binInfo.country.code) {
-      binInfo.country.flag = countryCodeToFlag(binInfo.country.code);
     }
 
     res.json(binInfo);
